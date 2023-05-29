@@ -5,7 +5,7 @@ import java.util.*;
 public class Program {
 
 
-    private static final int WIN_COUNT = 3;
+    private static final int WIN_COUNT = 5;
     private static final char DOT_HUMAN = 'X';
     private static final char DOT_AI = 'O';
     private static final char DOT_EMPTY = '•';
@@ -47,8 +47,8 @@ public class Program {
      */
     private static void initialize() {
         // Установим размерность игрового поля
-        fieldSizeX = 3;
-        fieldSizeY = 3;
+        fieldSizeX = 8;
+        fieldSizeY = 8;
 
         field = new char[fieldSizeY][fieldSizeX];
         // Пройдем по всем элементам массива
