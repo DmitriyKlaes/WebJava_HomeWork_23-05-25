@@ -57,7 +57,7 @@ public class Program {
         for (int y = 0; y < fieldSizeY; y++) {
             for (int x = 0; x < fieldSizeX; x++) {
                 // Проинициализируем все элементы массива DOT_EMPTY (признак пустого поля)
-                field[y][x] = DOT_EMPTY;
+                turnThisCell(x, y, DOT_EMPTY);
             }
         }
     }
@@ -115,7 +115,7 @@ public class Program {
             y = SCANNER.nextInt() - 1;
         }
         while (!isCellValid(y, x) || !isCellEmpty(y, x));
-        field[y][x] = DOT_HUMAN;
+        turnThisCell(x, y, DOT_HUMAN);
     }
 
     /**
@@ -146,22 +146,24 @@ public class Program {
      */
     private static void aiTurn() {
 
+        //сначала бот проверяет все свои возможные выйгрышные линии и ходит туда
         int moveFlag = checkAllPossibleWinAndTurn(DOT_AI, WIN_COUNT);
         if (moveFlag == 0) {
+            //если ничего не нашел, то проверяет все тоже самое для игрока и ходит туда
             moveFlag = checkAllPossibleWinAndTurn(DOT_HUMAN, WIN_COUNT);
         }
         if (moveFlag == 0) {
+            //потом проверит все мозможные направления,
+            //начиная с пустой ячейки с уменьшенным счетчиком победы на 1 для себя
             moveFlag = checkPossibleWinAndTurnStartCell(DOT_AI, 1);
         }
         if (moveFlag == 0) {
+            //потом тоже самое для игрока
             moveFlag = checkPossibleWinAndTurnStartCell(DOT_HUMAN, 1);
         }
-        if (moveFlag == 0) {
-            moveFlag = checkAllPossiblePreWinAndTurn(DOT_AI, WIN_COUNT);
-        }
-        if (moveFlag == 0) {
-            moveFlag = checkAllPossiblePreWinAndTurn(DOT_HUMAN, WIN_COUNT);
-        }
+
+        //далее если счетчик победы больше 3, то будут произведены дополнительные проверки
+        //но уже с уменьшенным счетчиком победы на 2... проверки будет сначала для себя, потом для игрока
         if (WIN_COUNT > 3) {
             if (moveFlag == 0) {
                 moveFlag = checkPossibleWinAndTurnStartCell(DOT_AI, 2);
@@ -170,6 +172,34 @@ public class Program {
                 moveFlag = checkPossibleWinAndTurnStartCell(DOT_HUMAN, 2);
             }
         }
+
+        //следующие 2 метода призваны продолжать линию победы для бота
+        //и пресекать линию победы для игрока
+        if (moveFlag == 0) {
+            //этот метод будет продолжать линию победы для бота, если вдруг такая образуется
+            //в процессе пресечений линий победы игрока
+            moveFlag = checkAllPossiblePreWinAndTurn(DOT_AI, WIN_COUNT);
+        }
+        if (moveFlag == 0) {
+            //этот метод будет пресекать хитросплетения линий победы игрока... метод нужен для
+            //обхода хитрости игрока
+            moveFlag = checkAllPossiblePreWinAndTurn(DOT_HUMAN, WIN_COUNT);
+        }
+
+        //если ход после всех этих проверок так и не сделан, то запускается цикл, в котором
+        //уменьшение счетчика победы и так до тех пор, пока аргумент счетчика победы не
+        //станет равным 1. Этот метод помогает боту начинать линию победы, если ход игры
+        //является хаотичным со стороны игрока.
+        if (WIN_COUNT > 3 && moveFlag == 0) {
+            for (int i = WIN_COUNT - 1; i >= 1; i--) {
+                moveFlag = checkAllPossibleWinAndTurn(DOT_AI, i);
+                if (moveFlag == 1) {
+                    break;
+                }
+            }
+        }
+
+        //ну и наконец бот совершает рандомный ход, если ни одно условие не совпало
         if (moveFlag == 0) {
             int x, y;
             do {
@@ -177,11 +207,36 @@ public class Program {
                 y = random.nextInt(fieldSizeY);
             }
             while (!isCellEmpty(y, x));
-            field[y][x] = DOT_AI;
-            System.out.printf("ya postavil na %d:%d random%n", x + 1, y + 1);
+            turnThisCell(x, y, DOT_AI);
         }
     }
 
+    /**
+     * Метод проверки победы
+     *
+     * @param playerChip
+     * @param winCount
+     * @return
+     */
+    private static boolean checkWin(char playerChip, int winCount) {
+        for (int y = 0; y < fieldSizeY; y++) {
+            for (int x = 0; x < fieldSizeX; x++) {
+                if (checkVertical(x, y, playerChip, winCount)) return true;
+                if (checkHorizontal(x, y, playerChip, winCount)) return true;
+                if (checkDiagonalLeftTopRightBottom(x, y, playerChip, winCount)) return true;
+                if (checkDiagonalLeftBottomRightTop(x, y, playerChip, winCount)) return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Метод проверки возможной победы и совершения хода в начальную проверяемую ячейку
+     *
+     * @param playerChip
+     * @param winCounterDecrement
+     * @return
+     */
     private static int checkPossibleWinAndTurnStartCell(char playerChip, int winCounterDecrement) {
         for (int y = 0; y < fieldSizeY; y++) {
             for (int x = 0; x < fieldSizeX; x++) {
@@ -194,6 +249,136 @@ public class Program {
         return 0;
     }
 
+    /**
+     * Метод для своевременного присечения развития победы у игрока.
+     * В этом методе реализовано смещение счетчика победы WIN_COUNT
+     * и одновременная проверка на возможную победу без смещения счетчика.
+     *
+     * @param cordX
+     * @param cordY
+     * @param playerChip
+     * @param winCount
+     * @param winCounterDecrement
+     * @return
+     */
+    private static boolean checkPossibleWin(int cordX, int cordY, char playerChip, int winCount,
+                                            int winCounterDecrement) {
+        int nextCell = 1;
+        if (checkVertical(cordX, cordY + nextCell, playerChip, winCount - winCounterDecrement) &&
+                cordY + nextCell + winCounterDecrement < fieldSizeY &&
+                (field[cordY + nextCell + winCounterDecrement][cordX] == playerChip ||
+                        field[cordY + nextCell + winCounterDecrement][cordX] == DOT_EMPTY)) return true;
+        if (checkHorizontal(cordX + nextCell, cordY, playerChip, winCount - winCounterDecrement) &&
+                cordX + nextCell + winCounterDecrement < fieldSizeX &&
+                (field[cordY][cordX + nextCell + winCounterDecrement] == playerChip ||
+                        field[cordY][cordX + nextCell + winCounterDecrement] == DOT_EMPTY)) return true;
+        if (checkDiagonalLeftTopRightBottom(cordX + nextCell, cordY + nextCell, playerChip, winCount - winCounterDecrement) &&
+                cordY + nextCell + winCounterDecrement < fieldSizeY && cordX + nextCell + winCounterDecrement < fieldSizeX &&
+                (field[cordY + nextCell + winCounterDecrement][cordX + nextCell + winCounterDecrement] == playerChip ||
+                        field[cordY + nextCell + winCounterDecrement][cordX + nextCell + winCounterDecrement] == DOT_EMPTY))
+            return true;
+        return checkDiagonalLeftBottomRightTop(cordX + nextCell, cordY - nextCell, playerChip, winCount - winCounterDecrement) &&
+                cordY - nextCell - winCounterDecrement >= 0 && cordX + nextCell + winCounterDecrement < fieldSizeX &&
+                (field[cordY - nextCell - winCounterDecrement][cordX + nextCell + winCounterDecrement] == playerChip ||
+                        field[cordY - nextCell - winCounterDecrement][cordX + nextCell + winCounterDecrement] == DOT_EMPTY);
+    }
+
+    /**
+     * Метод проверки по вертикали
+     *
+     * @param cordX
+     * @param cordY
+     * @param playerChip
+     * @param winCount
+     * @return
+     */
+    private static boolean checkVertical(int cordX, int cordY, char playerChip, int winCount) {
+        int winCounter = 0;
+        for (int i = cordY; i < winCount + cordY; i++) {
+            if (i >= fieldSizeY) {
+                return false;
+            }
+            if (field[i][cordX] == playerChip) {
+                winCounter++;
+            }
+        }
+        return winCounter == winCount;
+    }
+
+    /**
+     * Метод проверки по горизонтали
+     *
+     * @param cordX
+     * @param cordY
+     * @param playerChip
+     * @param winCount
+     * @return
+     */
+    private static boolean checkHorizontal(int cordX, int cordY, char playerChip, int winCount) {
+        int winCounter = 0;
+        for (int i = cordX; i < winCount + cordX; i++) {
+            if (i >= fieldSizeX) {
+                return false;
+            }
+            if (field[cordY][i] == playerChip) {
+                winCounter++;
+            }
+        }
+        return winCounter == winCount;
+    }
+
+    /**
+     * Метод проверки по диагонали \
+     *
+     * @param cordX
+     * @param cordY
+     * @param playerChip
+     * @param winCount
+     * @return
+     */
+    private static boolean checkDiagonalLeftTopRightBottom(int cordX, int cordY, char playerChip, int winCount) {
+        int winCounter = 0;
+        for (int i = 0; i < winCount; i++) {
+            if (cordY + i >= fieldSizeY || cordX + i >= fieldSizeX) {
+                return false;
+            }
+            if (field[cordY + i][cordX + i] == playerChip) {
+                winCounter++;
+            }
+        }
+        return winCounter == winCount;
+    }
+
+    /**
+     * Метод проверки по диагонали /
+     *
+     * @param cordX
+     * @param cordY
+     * @param playerChip
+     * @param winCount
+     * @return
+     */
+    private static boolean checkDiagonalLeftBottomRightTop(int cordX, int cordY, char playerChip, int winCount) {
+        int winCounter = 0;
+        for (int i = 0; i < winCount; i++) {
+            if (cordY - i < 0 || cordX + i >= fieldSizeX) {
+                return false;
+            }
+            if (field[cordY - i][cordX + i] == playerChip) {
+                winCounter++;
+            }
+        }
+        return winCounter == winCount;
+    }
+
+    /**
+     * Метод проверки всех возможных побед на поле без привязки к ячейке.
+     * Ход совершается в ту ячейку, которая осталась последней в полосе победы
+     *
+     * @param playerChip
+     * @param winCount
+     * @return
+     */
     static int checkAllPossibleWinAndTurn(char playerChip, int winCount) {
         for (int y = 0; y < fieldSizeY; y++) {
             for (int x = 0; x < fieldSizeX; x++) {
@@ -211,19 +396,18 @@ public class Program {
         return 0;
     }
 
+    /**
+     * Вспомогательный метод, который совершает ход в последнюю оставшуюся ячейку на полосе победы по вертикали
+     *
+     * @param cordX
+     * @param cordY
+     * @param playerChip
+     * @param winCount
+     * @return
+     */
     private static boolean checkVerticalAndTurn(int cordX, int cordY, char playerChip, int winCount) {
-        int bias = 0;
         listMoves.clear();
-        for (int i = cordY; i < winCount + cordY; i++) {
-            if (i >= fieldSizeY ||
-                    field[i][cordX] != playerChip && field[i][cordX] != DOT_EMPTY) {
-                return false;
-            }
-            if (field[i][cordX] == DOT_EMPTY) {
-                listMoves.add(bias);
-            }
-            bias++;
-        }
+        listOperationVertical(cordX, cordY, playerChip, winCount);
         if (listMoves.size() == 1) {
             turnThisCell(cordX, cordY + listMoves.get(0), DOT_AI);
             return true;
@@ -231,19 +415,18 @@ public class Program {
         return false;
     }
 
+    /**
+     * Вспомогательный метод, который совершает ход в последнюю оставшуюся ячейку на полосе победы по горизонтали
+     *
+     * @param cordX
+     * @param cordY
+     * @param playerChip
+     * @param winCount
+     * @return
+     */
     private static boolean checkHorizontalAndTurn(int cordX, int cordY, char playerChip, int winCount) {
-        int bias = 0;
         listMoves.clear();
-        for (int i = cordX; i < winCount + cordX; i++) {
-            if (i >= fieldSizeX ||
-                    field[cordY][i] != playerChip && field[cordY][i] != DOT_EMPTY) {
-                return false;
-            }
-            if (field[cordY][i] == DOT_EMPTY) {
-                listMoves.add(bias);
-            }
-            bias++;
-        }
+        listOperationHorizontal(cordX, cordY, playerChip, winCount);
         if (listMoves.size() == 1) {
             turnThisCell(cordX + listMoves.get(0), cordY, DOT_AI);
             return true;
@@ -251,20 +434,19 @@ public class Program {
         return false;
     }
 
-    private static boolean checkDiagonalLeftTopRightBottomAndTurn(int cordX, int cordY, char playerChip, int winCount) {
-        int bias = 0;
+    /**
+     * Вспомогательный метод, который совершает ход в последнюю оставшуюся ячейку на полосе победы по диагонали \
+     *
+     * @param cordX
+     * @param cordY
+     * @param playerChip
+     * @param winCount
+     * @return
+     */
+    private static boolean checkDiagonalLeftTopRightBottomAndTurn(int cordX, int cordY, char playerChip,
+                                                                  int winCount) {
         listMoves.clear();
-        for (int i = 0; i < winCount; i++) {
-            if (cordY + i >= fieldSizeY ||
-                    cordX + i >= fieldSizeX ||
-                    field[cordY + i][cordX + i] != playerChip && field[cordY + i][cordX + i] != DOT_EMPTY) {
-                return false;
-            }
-            if (field[cordY + i][cordX + i] == DOT_EMPTY) {
-                listMoves.add(bias);
-            }
-            bias++;
-        }
+        listOperationDiagonalLeftTopRightBottom(cordX, cordY, playerChip, winCount);
         if (listMoves.size() == 1) {
             turnThisCell(cordX + listMoves.get(0), cordY + listMoves.get(0), DOT_AI);
             return true;
@@ -272,20 +454,19 @@ public class Program {
         return false;
     }
 
-    private static boolean checkDiagonalLeftBottomRightTopAndTurn(int cordX, int cordY, char playerChip, int winCount) {
-        int bias = 0;
+    /**
+     * Вспомогательный метод, который совершает ход в последнюю оставшуюся ячейку на полосе победы по диагонали /
+     *
+     * @param cordX
+     * @param cordY
+     * @param playerChip
+     * @param winCount
+     * @return
+     */
+    private static boolean checkDiagonalLeftBottomRightTopAndTurn(int cordX, int cordY, char playerChip,
+                                                                  int winCount) {
         listMoves.clear();
-        for (int i = 0; i < winCount; i++) {
-            if (cordY - i < 0 ||
-                    cordX + i >= fieldSizeX ||
-                    field[cordY - i][cordX + i] != playerChip && field[cordY - i][cordX + i] != DOT_EMPTY) {
-                return false;
-            }
-            if (field[cordY - i][cordX + i] == DOT_EMPTY) {
-                listMoves.add(bias);
-            }
-            bias++;
-        }
+        listOperationDiagonalLeftBottomRightTop(cordX, cordY, playerChip, winCount);
         if (listMoves.size() == 1) {
             turnThisCell(cordX + listMoves.get(0), cordY - listMoves.get(0), DOT_AI);
             return true;
@@ -293,6 +474,16 @@ public class Program {
         return false;
     }
 
+    /**
+     * Метод для своевременного пресечения составления выйгрышной комбинации
+     * с совершением хода без привязке к ячейке.
+     * Совершает ход в одну из центральных ячеек, если до победы осталось поставить 2 фишки
+     * в соответствующую полосу победы.
+     *
+     * @param playerChip
+     * @param winCount
+     * @return
+     */
     static int checkAllPossiblePreWinAndTurn(char playerChip, int winCount) {
         for (int y = 0; y < fieldSizeY; y++) {
             for (int x = 0; x < fieldSizeX; x++) {
@@ -310,19 +501,19 @@ public class Program {
         return 0;
     }
 
+    /**
+     * Вспомогательный метод для своевременного пресечения составления выйгрышной комбинации по вертикали
+     * Совершает ход в одну из центральных ячеек, если до победы осталось поставить 2 фишки
+     *
+     * @param cordX
+     * @param cordY
+     * @param playerChip
+     * @param winCount
+     * @return
+     */
     private static boolean checkVerticalAndTurnForPre(int cordX, int cordY, char playerChip, int winCount) {
-        int bias = 0;
         listMoves.clear();
-        for (int i = cordY; i < winCount + cordY; i++) {
-            if (i >= fieldSizeY ||
-                    field[i][cordX] != playerChip && field[i][cordX] != DOT_EMPTY) {
-                return false;
-            }
-            if (field[i][cordX] == DOT_EMPTY) {
-                listMoves.add(bias);
-            }
-            bias++;
-        }
+        listOperationVertical(cordX, cordY, playerChip, winCount);
         if (listMoves.size() == 2) {
             if (listMoves.contains(1)) {
                 turnThisCell(cordX, cordY + 1, DOT_AI);
@@ -335,19 +526,19 @@ public class Program {
         return false;
     }
 
+    /**
+     * Вспомогательный метод для своевременного пресечения составления выйгрышной комбинации по горизонтали
+     * Совершает ход в одну из центральных ячеек, если до победы осталось поставить 2 фишки
+     *
+     * @param cordX
+     * @param cordY
+     * @param playerChip
+     * @param winCount
+     * @return
+     */
     private static boolean checkHorizontalAndTurnForPre(int cordX, int cordY, char playerChip, int winCount) {
-        int bias = 0;
         listMoves.clear();
-        for (int i = cordX; i < winCount + cordX; i++) {
-            if (i >= fieldSizeX ||
-                    field[cordY][i] != playerChip && field[cordY][i] != DOT_EMPTY) {
-                return false;
-            }
-            if (field[cordY][i] == DOT_EMPTY) {
-                listMoves.add(bias);
-            }
-            bias++;
-        }
+        listOperationHorizontal(cordX, cordY, playerChip, winCount);
         if (listMoves.size() == 2) {
             if (listMoves.contains(1)) {
                 turnThisCell(cordX + 1, cordY, DOT_AI);
@@ -360,20 +551,20 @@ public class Program {
         return false;
     }
 
-    private static boolean checkDiagonalLeftTopRightBottomAndTurnForPre(int cordX, int cordY, char playerChip, int winCount) {
-        int bias = 0;
+    /**
+     * Вспомогательный метод для своевременного пресечения составления выйгрышной комбинации по диагонали \
+     * Совершает ход в одну из центральных ячеек, если до победы осталось поставить 2 фишки
+     *
+     * @param cordX
+     * @param cordY
+     * @param playerChip
+     * @param winCount
+     * @return
+     */
+    private static boolean checkDiagonalLeftTopRightBottomAndTurnForPre(int cordX, int cordY, char playerChip,
+                                                                        int winCount) {
         listMoves.clear();
-        for (int i = 0; i < winCount; i++) {
-            if (cordY + i >= fieldSizeY ||
-                    cordX + i >= fieldSizeX ||
-                    field[cordY + i][cordX + i] != playerChip && field[cordY + i][cordX + i] != DOT_EMPTY) {
-                return false;
-            }
-            if (field[cordY + i][cordX + i] == DOT_EMPTY) {
-                listMoves.add(bias);
-            }
-            bias++;
-        }
+        listOperationDiagonalLeftTopRightBottom(cordX, cordY, playerChip, winCount);
         if (listMoves.size() == 2) {
             if (listMoves.contains(1)) {
                 turnThisCell(cordX + 1, cordY + 1, DOT_AI);
@@ -386,20 +577,20 @@ public class Program {
         return false;
     }
 
-    private static boolean checkDiagonalLeftBottomRightTopAndTurnForPre(int cordX, int cordY, char playerChip, int winCount) {
-        int bias = 0;
+    /**
+     * Вспомогательный метод для своевременного пресечения составления выйгрышной комбинации по диагонали /
+     * Совершает ход в одну из центральных ячеек, если до победы осталось поставить 2 фишки
+     *
+     * @param cordX
+     * @param cordY
+     * @param playerChip
+     * @param winCount
+     * @return
+     */
+    private static boolean checkDiagonalLeftBottomRightTopAndTurnForPre(int cordX, int cordY, char playerChip,
+                                                                        int winCount) {
         listMoves.clear();
-        for (int i = 0; i < winCount; i++) {
-            if (cordY - i < 0 ||
-                    cordX + i >= fieldSizeX ||
-                    field[cordY - i][cordX + i] != playerChip && field[cordY - i][cordX + i] != DOT_EMPTY) {
-                return false;
-            }
-            if (field[cordY - i][cordX + i] == DOT_EMPTY) {
-                listMoves.add(bias);
-            }
-            bias++;
-        }
+        listOperationDiagonalLeftBottomRightTop(cordX, cordY, playerChip, winCount);
         if (listMoves.size() == 2) {
             if (listMoves.contains(1)) {
                 turnThisCell(cordX + 1, cordY - 1, DOT_AI);
@@ -412,87 +603,115 @@ public class Program {
         return false;
     }
 
-    private static void turnThisCell(int x, int y, char playerChip) {
-        field[y][x] = playerChip;
+    /**
+     * Метод для итерации по списку возможных ходов для вспомогательного метода
+     * пресечения победы по вертикали
+     *
+     * @param cordX
+     * @param cordY
+     * @param playerChip
+     * @param winCount
+     */
+    private static void listOperationVertical(int cordX, int cordY, char playerChip, int winCount) {
+        int bias = 0;
+        for (int i = cordY; i < winCount + cordY; i++) {
+            if (i >= fieldSizeY ||
+                    field[i][cordX] != playerChip && field[i][cordX] != DOT_EMPTY) {
+                listMoves.clear();
+                return;
+            }
+            if (field[i][cordX] == DOT_EMPTY) {
+                listMoves.add(bias);
+            }
+            bias++;
+        }
     }
 
     /**
-     * Проверка победы
+     * Метод для итерации по списку возможных ходов для вспомогательного метода
+     * пресечения победы по горизонтали
      *
-     * @param
-     * @return
+     * @param cordX
+     * @param cordY
+     * @param playerChip
+     * @param winCount
      */
-    private static boolean checkWin(char playerChip, int winCount) {
-        for (int y = 0; y < fieldSizeY; y++) {
-            for (int x = 0; x < fieldSizeX; x++) {
-                if (checkVertical(x, y, playerChip, winCount)) return true;
-                if (checkHorizontal(x, y, playerChip, winCount)) return true;
-                if (checkDiagonalLeftTopRightBottom(x, y, playerChip, winCount)) return true;
-                if (checkDiagonalLeftBottomRightTop(x, y, playerChip, winCount)) return true;
-            }
-        }
-        return false;
-    }
-
-    private static boolean checkPossibleWin(int cordX, int cordY, char playerChip, int winCount, int winCounterDecrement) {
-        int nextCell = 1;
-        if (checkVertical(cordX, cordY + nextCell, playerChip, winCount - winCounterDecrement)) return true;
-        if (checkHorizontal(cordX + nextCell, cordY, playerChip, winCount - winCounterDecrement)) return true;
-        if (checkDiagonalLeftTopRightBottom(cordX + nextCell, cordY + nextCell, playerChip, winCount - winCounterDecrement))
-            return true;
-        return checkDiagonalLeftBottomRightTop(cordX + nextCell, cordY - nextCell, playerChip, winCount - winCounterDecrement);
-    }
-
-    private static boolean checkVertical(int cordX, int cordY, char playerChip, int winCount) {
-        int winCounter = 0;
-        for (int i = cordY; i < winCount + cordY; i++) {
-            if (i >= fieldSizeY) {
-                return false;
-            }
-            if (field[i][cordX] == playerChip) {
-                winCounter++;
-            }
-        }
-        return winCounter == winCount;
-    }
-
-    private static boolean checkHorizontal(int cordX, int cordY, char playerChip, int winCount) {
-        int winCounter = 0;
+    private static void listOperationHorizontal(int cordX, int cordY, char playerChip, int winCount) {
+        int bias = 0;
         for (int i = cordX; i < winCount + cordX; i++) {
-            if (i >= fieldSizeX) {
-                return false;
+            if (i >= fieldSizeX ||
+                    field[cordY][i] != playerChip && field[cordY][i] != DOT_EMPTY) {
+                listMoves.clear();
+                return;
             }
-            if (field[cordY][i] == playerChip) {
-                winCounter++;
+            if (field[cordY][i] == DOT_EMPTY) {
+                listMoves.add(bias);
             }
+            bias++;
         }
-        return winCounter == winCount;
     }
 
-    private static boolean checkDiagonalLeftTopRightBottom(int cordX, int cordY, char playerChip, int winCount) {
-        int winCounter = 0;
+    /**
+     * Метод для итерации по списку возможных ходов для вспомогательного метода
+     * пресечения победы по диагонали \
+     *
+     * @param cordX
+     * @param cordY
+     * @param playerChip
+     * @param winCount
+     */
+    private static void listOperationDiagonalLeftTopRightBottom(int cordX, int cordY, char playerChip,
+                                                                int winCount) {
+        int bias = 0;
         for (int i = 0; i < winCount; i++) {
-            if (cordY + i >= fieldSizeY || cordX + i >= fieldSizeX) {
-                return false;
+            if (cordY + i >= fieldSizeY ||
+                    cordX + i >= fieldSizeX ||
+                    field[cordY + i][cordX + i] != playerChip && field[cordY + i][cordX + i] != DOT_EMPTY) {
+                listMoves.clear();
+                return;
             }
-            if (field[cordY + i][cordX + i] == playerChip) {
-                winCounter++;
+            if (field[cordY + i][cordX + i] == DOT_EMPTY) {
+                listMoves.add(bias);
             }
+            bias++;
         }
-        return winCounter == winCount;
     }
 
-    private static boolean checkDiagonalLeftBottomRightTop(int cordX, int cordY, char playerChip, int winCount) {
-        int winCounter = 0;
+    /**
+     * Метод для итерации по списку возможных ходов для вспомогательного метода
+     * пресечения победы по диагонали /
+     *
+     * @param cordX
+     * @param cordY
+     * @param playerChip
+     * @param winCount
+     */
+    private static void listOperationDiagonalLeftBottomRightTop(int cordX, int cordY, char playerChip,
+                                                                int winCount) {
+        int bias = 0;
         for (int i = 0; i < winCount; i++) {
-            if (cordY - i < 0 || cordX + i >= fieldSizeX) {
-                return false;
+            if (cordY - i < 0 ||
+                    cordX + i >= fieldSizeX ||
+                    field[cordY - i][cordX + i] != playerChip && field[cordY - i][cordX + i] != DOT_EMPTY) {
+                listMoves.clear();
+                return;
             }
-            if (field[cordY - i][cordX + i] == playerChip) {
-                winCounter++;
+            if (field[cordY - i][cordX + i] == DOT_EMPTY) {
+                listMoves.add(bias);
             }
+            bias++;
         }
-        return winCounter == winCount;
+    }
+
+    /**
+     * Метод для совершения хода в выбранную ячейку
+     *
+     * @param x
+     * @param y
+     * @param playerChip
+     */
+    private static void turnThisCell(int x, int y, char playerChip) {
+        field[y][x] = playerChip;
     }
 
     /**
