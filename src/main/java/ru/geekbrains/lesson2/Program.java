@@ -1,13 +1,11 @@
 package ru.geekbrains.lesson2;
 
-import java.util.ArrayList;
-import java.util.Random;
-import java.util.Scanner;
+import java.util.*;
 
 public class Program {
 
 
-    private static final int WIN_COUNT = 4;
+    private static final int WIN_COUNT = 3;
     private static final char DOT_HUMAN = 'X';
     private static final char DOT_AI = 'O';
     private static final char DOT_EMPTY = '•';
@@ -49,8 +47,8 @@ public class Program {
      */
     private static void initialize() {
         // Установим размерность игрового поля
-        fieldSizeX = 5;
-        fieldSizeY = 5;
+        fieldSizeX = 3;
+        fieldSizeY = 3;
 
         field = new char[fieldSizeY][fieldSizeX];
         // Пройдем по всем элементам массива
@@ -110,7 +108,7 @@ public class Program {
     private static void humanTurn() {
         int x, y;
         do {
-            System.out.print("Введите координаты хода X и Y (от 1 до 3) через пробел >>> ");
+            System.out.print("Введите координаты хода X(max " + fieldSizeX + ") и Y(max " + fieldSizeY + ") через пробел >>> ");
             x = SCANNER.nextInt() - 1;
             y = SCANNER.nextInt() - 1;
         }
@@ -146,8 +144,24 @@ public class Program {
      */
     private static void aiTurn() {
 
+        int moveFlag = 0;
+        //первый ход бота при полях больше 3х3 - рандомный... что бы было интереснее
+        if (fieldSizeX > 3 && fieldSizeY > 3 && isFirstAiTurn()) {
+            int x, y;
+            do {
+                x = random.nextInt(fieldSizeX);
+                y = random.nextInt(fieldSizeY);
+            }
+            while (!isCellEmpty(y, x));
+            turnThisCell(x, y, DOT_AI);
+            moveFlag = 1;
+        }
+
         //сначала бот проверяет все свои возможные выйгрышные линии и ходит туда
-        int moveFlag = checkAllPossibleWinAndTurn(DOT_AI, WIN_COUNT);
+        if (moveFlag == 0) {
+            //если ничего не нашел, то проверяет все тоже самое для игрока и ходит туда
+            moveFlag = checkAllPossibleWinAndTurn(DOT_AI, WIN_COUNT);
+        }
         if (moveFlag == 0) {
             //если ничего не нашел, то проверяет все тоже самое для игрока и ходит туда
             moveFlag = checkAllPossibleWinAndTurn(DOT_HUMAN, WIN_COUNT);
@@ -198,17 +212,17 @@ public class Program {
                 }
             }
         }
+    }
 
-        //ну и наконец бот совершает рандомный ход, если ни одно условие не совпало
-        if (moveFlag == 0) {
-            int x, y;
-            do {
-                x = random.nextInt(fieldSizeX);
-                y = random.nextInt(fieldSizeY);
+    private static boolean isFirstAiTurn() {
+        for (int y = 0; y < fieldSizeY; y++) {
+            for (int x = 0; x < fieldSizeX; x++) {
+                if (field[y][x] == DOT_AI) {
+                    return false;
+                }
             }
-            while (!isCellEmpty(y, x));
-            turnThisCell(x, y, DOT_AI);
         }
+        return true;
     }
 
     /**
